@@ -12,28 +12,31 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Scrape IBJJF events
+        continue-on-error: true
         run: |
-          curl -f -s -X GET \
+          response=$(curl -s -w "\n%{http_code}" -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_URL }}/api/cron/scrape?source=ibjjf"
-          echo "IBJJF scrape complete"
+            "${{ secrets.APP_URL }}/api/cron/scrape?source=ibjjf")
+          echo "$response"
 
       - name: Wait between scrapers
         run: sleep 5
 
       - name: Scrape Eventbrite events
+        continue-on-error: true
         run: |
-          curl -f -s -X GET \
+          response=$(curl -s -w "\n%{http_code}" -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_URL }}/api/cron/scrape?source=eventbrite"
-          echo "Eventbrite scrape complete"
+            "${{ secrets.APP_URL }}/api/cron/scrape?source=eventbrite")
+          echo "$response"
 
       - name: Wait between scrapers
         run: sleep 5
 
       - name: Scrape Smoothcomp events
+        continue-on-error: true
         run: |
-          curl -f -s -X GET \
+          response=$(curl -s -w "\n%{http_code}" -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_URL }}/api/cron/scrape?source=smoothcomp"
-          echo "Smoothcomp scrape complete"
+            "${{ secrets.APP_URL }}/api/cron/scrape?source=smoothcomp")
+          echo "$response"
