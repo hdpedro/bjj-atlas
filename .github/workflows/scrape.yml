@@ -1,0 +1,39 @@
+name: BJJ Atlas - Weekly Scrape
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Scrape IBJJF events
+        run: |
+          curl -f -s -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/scrape?source=ibjjf"
+          echo "IBJJF scrape complete"
+
+      - name: Wait between scrapers
+        run: sleep 5
+
+      - name: Scrape Eventbrite events
+        run: |
+          curl -f -s -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/scrape?source=eventbrite"
+          echo "Eventbrite scrape complete"
+
+      - name: Wait between scrapers
+        run: sleep 5
+
+      - name: Scrape Smoothcomp events
+        run: |
+          curl -f -s -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/scrape?source=smoothcomp"
+          echo "Smoothcomp scrape complete"
