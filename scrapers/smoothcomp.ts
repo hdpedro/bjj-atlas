@@ -2,47 +2,68 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import type { RawScrapedEvent } from '@/types/event';
 
-const EVENTS_URL = 'https://smoothcomp.com/en/events';
-const MAX_EVENTS = 30; // Keep under Vercel 60s timeout
+// Main listing + federation-specific pages (CompNet, SJJIF, etc.)
+const EVENT_LISTING_URLS = [
+  'https://smoothcomp.com/en/events',
+  'https://compnet.smoothcomp.com/en/federation/30/events/upcoming',
+  'https://smoothcomp.com/en/federation/2/events/upcoming',  // SJJIF
+  'https://smoothcomp.com/en/federation/1/events/upcoming',  // AJP
+];
+const MAX_EVENTS_PER_SOURCE = 20; // Keep under Vercel 60s timeout total
 const DELAY_MS = 400;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function getEventUrls(): Promise<string[]> {
-  const { data: html } = await axios.get(EVENTS_URL, {
-    timeout: 15000,
-    headers: { 'User-Agent': 'BJJAtlas/1.0 (event aggregator)' },
-  });
-  const $ = cheerio.load(html);
-
-  // Try JSON-LD ItemList first
-  const urls: string[] = [];
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const json = JSON.parse($(el).text());
-      if (json['@type'] === 'ItemList' && Array.isArray(json.itemListElement)) {
-        for (const item of json.itemListElement) {
-          const url = item.url || item.item?.url;
-          if (url) urls.push(url);
-        }
-      }
-    } catch { /* skip */ }
-  });
-
-  // Fallback: extract links from page
-  if (urls.length === 0) {
-    $('a[href*="/en/event/"]').each((_, el) => {
-      const href = $(el).attr('href');
-      if (href) {
-        const full = href.startsWith('http') ? href : `https://smoothcomp.com${href}`;
-        if (!urls.includes(full)) urls.push(full);
-      }
+async function getEventUrlsFromPage(listingUrl: string, max: number): Promise<string[]> {
+  try {
+    const { data: html } = await axios.get(listingUrl, {
+      timeout: 15000,
+      headers: { 'User-Agent': 'BJJAtlas/1.0 (event aggregator)' },
     });
-  }
+    const $ = cheerio.load(html);
 
-  return urls.slice(0, MAX_EVENTS);
+    const urls: string[] = [];
+    // Try JSON-LD ItemList first
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const json = JSON.parse($(el).text());
+        if (json['@type'] === 'ItemList' && Array.isArray(json.itemListElement)) {
+          for (const item of json.itemListElement) {
+            const url = item.url || item.item?.url;
+            if (url && !urls.includes(url)) urls.push(url);
+          }
+        }
+      } catch { /* skip */ }
+    });
+
+    // Fallback: extract links from page
+    if (urls.length === 0) {
+      $('a[href*="/event/"]').each((_, el) => {
+        const href = $(el).attr('href');
+        if (href && href.match(/\/event\/\d+/)) {
+          const full = href.startsWith('http') ? href : new URL(href, listingUrl).toString();
+          if (!urls.includes(full)) urls.push(full);
+        }
+      });
+    }
+
+    return urls.slice(0, max);
+  } catch (err) {
+    console.error(`[Smoothcomp] Error fetching ${listingUrl}:`, err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+async function getAllEventUrls(): Promise<string[]> {
+  const allUrls = new Set<string>();
+  for (const listingUrl of EVENT_LISTING_URLS) {
+    const urls = await getEventUrlsFromPage(listingUrl, MAX_EVENTS_PER_SOURCE);
+    urls.forEach(u => allUrls.add(u));
+    console.log(`[Smoothcomp] ${listingUrl} → ${urls.length} URLs`);
+  }
+  return Array.from(allUrls);
 }
 
 async function scrapeEventPage(url: string): Promise<RawScrapedEvent | null> {
@@ -110,7 +131,7 @@ export async function scrapeSmoothcomp(): Promise<RawScrapedEvent[]> {
   const events: RawScrapedEvent[] = [];
 
   try {
-    const urls = await getEventUrls();
+    const urls = await getAllEventUrls();
     console.log(`[Smoothcomp] Found ${urls.length} event URLs`);
 
     for (const url of urls) {
