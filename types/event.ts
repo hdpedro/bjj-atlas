@@ -6,7 +6,7 @@ export interface RawScrapedEvent {
   country?: string;
   venue?: string;
   organizer?: string;
-  source: 'smoothcomp' | 'eventbrite' | 'ibjjf';
+  source: 'smoothcomp' | 'ibjjf';
   sourceUrl: string;
   description?: string;
   rawData?: Record<string, unknown>;

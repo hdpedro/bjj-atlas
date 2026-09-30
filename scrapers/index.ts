@@ -1,5 +1,4 @@
 import { scrapeSmoothcomp } from './smoothcomp';
-import { scrapeEventbrite } from './eventbrite';
 import { scrapeIbjjf } from './ibjjf';
 import type { RawScrapedEvent } from '@/types/event';
 
@@ -14,12 +13,11 @@ export async function runAllScrapers(): Promise<ScrapeResult[]> {
 
   const results = await Promise.allSettled([
     scrapeSmoothcomp().then((events) => ({ source: 'smoothcomp', events })),
-    scrapeEventbrite().then((events) => ({ source: 'eventbrite', events })),
     scrapeIbjjf().then((events) => ({ source: 'ibjjf', events })),
   ]);
 
   const scrapeResults: ScrapeResult[] = results.map((result, i) => {
-    const sources = ['smoothcomp', 'eventbrite', 'ibjjf'];
+    const sources = ['smoothcomp', 'ibjjf'];
     if (result.status === 'fulfilled') {
       return result.value;
     }
@@ -37,7 +35,6 @@ export async function runAllScrapers(): Promise<ScrapeResult[]> {
 export async function runScraper(source: string): Promise<ScrapeResult> {
   const scrapers: Record<string, () => Promise<RawScrapedEvent[]>> = {
     smoothcomp: scrapeSmoothcomp,
-    eventbrite: scrapeEventbrite,
     ibjjf: scrapeIbjjf,
   };
 
