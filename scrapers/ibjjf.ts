@@ -2,15 +2,22 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import type { RawScrapedEvent } from '@/types/event';
 
-const IBJJF_CALENDAR_URL = 'https://ibjjf.com/events/calendar';
-const IBJJF_EVENTS_URL = 'https://ibjjf.com/events';
+const IBJJF_URLS = [
+  'https://ibjjf.com/events',
+  'https://ibjjf.com/events/calendar',
+];
 
-// Known major IBJJF events as seed data (updated periodically)
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
 const SEED_EVENTS: RawScrapedEvent[] = [
   {
-    name: 'World IBJJF Jiu-Jitsu Championship 2026',
-    dateStart: '2026-05-28',
-    dateEnd: '2026-06-01',
+    name: 'World IBJJF Jiu-Jitsu Championship 2027',
+    dateStart: '2027-05-27',
+    dateEnd: '2027-06-01',
     city: 'Anaheim',
     country: 'United States',
     venue: 'Anaheim Convention Center',
@@ -20,9 +27,9 @@ const SEED_EVENTS: RawScrapedEvent[] = [
     description: 'The most prestigious BJJ tournament in the world',
   },
   {
-    name: 'Pan IBJJF Jiu-Jitsu Championship 2026',
-    dateStart: '2026-03-18',
-    dateEnd: '2026-03-22',
+    name: 'Pan IBJJF Jiu-Jitsu Championship 2027',
+    dateStart: '2027-03-17',
+    dateEnd: '2027-03-22',
     city: 'Kissimmee',
     country: 'United States',
     venue: 'Silver Spurs Arena',
@@ -32,9 +39,9 @@ const SEED_EVENTS: RawScrapedEvent[] = [
     description: 'Pan American IBJJF Championship',
   },
   {
-    name: 'European IBJJF Jiu-Jitsu Championship 2026',
-    dateStart: '2026-01-20',
-    dateEnd: '2026-01-25',
+    name: 'European IBJJF Jiu-Jitsu Championship 2027',
+    dateStart: '2027-01-19',
+    dateEnd: '2027-01-25',
     city: 'Lisbon',
     country: 'Portugal',
     venue: 'Altice Arena',
@@ -44,9 +51,9 @@ const SEED_EVENTS: RawScrapedEvent[] = [
     description: 'European IBJJF Championship',
   },
   {
-    name: 'Brasileiro IBJJF Jiu-Jitsu Championship 2026',
-    dateStart: '2026-04-23',
-    dateEnd: '2026-04-27',
+    name: 'Brasileiro IBJJF Jiu-Jitsu Championship 2027',
+    dateStart: '2027-04-22',
+    dateEnd: '2027-04-27',
     city: 'São Paulo',
     country: 'Brazil',
     venue: 'Ginásio do Ibirapuera',
@@ -69,19 +76,15 @@ const SEED_EVENTS: RawScrapedEvent[] = [
   },
 ];
 
-async function scrapeIbjjfPage(): Promise<RawScrapedEvent[]> {
+async function scrapeIbjjfPages(): Promise<RawScrapedEvent[]> {
   const events: RawScrapedEvent[] = [];
-  const urls = [IBJJF_EVENTS_URL, IBJJF_CALENDAR_URL];
 
-  for (const url of urls) {
+  for (const url of IBJJF_URLS) {
     try {
-      const { data: html } = await axios.get(url, {
-        timeout: 15000,
-        headers: { 'User-Agent': 'BJJAtlas/1.0 (event aggregator)' },
-      });
+      const { data: html } = await axios.get(url, { timeout: 15000, headers: HEADERS });
       const $ = cheerio.load(html);
 
-      // Try JSON-LD
+      // JSON-LD structured data (most reliable)
       $('script[type="application/ld+json"]').each((_, el) => {
         try {
           const json = JSON.parse($(el).text());
@@ -107,19 +110,20 @@ async function scrapeIbjjfPage(): Promise<RawScrapedEvent[]> {
         } catch { /* skip */ }
       });
 
-      // Flexible HTML parsing — look for event-like patterns
-      $('[class*="event"], [class*="calendar"], [class*="card"], article, .tournament').each((_, el) => {
+      // HTML parsing — accept ALL events found on the IBJJF site
+      $('[class*="event"], [class*="calendar"], [class*="card"], article, .tournament, [class*="schedule"]').each((_, el) => {
         const $el = $(el);
-        const name = $el.find('h2, h3, h4, [class*="title"], [class*="name"]').first().text().trim();
+        const name = $el.find('h2, h3, h4, h5, [class*="title"], [class*="name"]').first().text().trim();
         const dateText = $el.find('[class*="date"], time, [datetime]').first().text().trim()
           || $el.find('[datetime]').attr('datetime') || '';
         const link = $el.find('a').first().attr('href') || '';
+        const locationText = $el.find('[class*="location"], [class*="city"], [class*="venue"]').first().text().trim();
 
-        if (name && name.length > 5 && (name.toLowerCase().includes('jiu') || name.toLowerCase().includes('championship') || name.toLowerCase().includes('open'))) {
+        if (name && name.length > 5) {
           events.push({
             name,
             dateStart: dateText,
-            city: '',
+            city: locationText || '',
             country: '',
             organizer: 'IBJJF',
             source: 'ibjjf',
@@ -127,6 +131,8 @@ async function scrapeIbjjfPage(): Promise<RawScrapedEvent[]> {
           });
         }
       });
+
+      console.log(`[IBJJF] ${url} → ${events.length} events found so far`);
     } catch (err) {
       console.error(`[IBJJF] Error scraping ${url}:`, err instanceof Error ? err.message : err);
     }
@@ -138,13 +144,10 @@ async function scrapeIbjjfPage(): Promise<RawScrapedEvent[]> {
 export async function scrapeIbjjf(): Promise<RawScrapedEvent[]> {
   console.log('[IBJJF] Starting scrape...');
 
-  // Try live scraping first
-  const liveEvents = await scrapeIbjjfPage();
+  const liveEvents = await scrapeIbjjfPages();
   console.log(`[IBJJF] Live scraped: ${liveEvents.length} events`);
 
-  // Merge with seed data (seed data serves as fallback)
   const allEvents = [...liveEvents, ...SEED_EVENTS];
-
   console.log(`[IBJJF] Total (live + seed): ${allEvents.length} events`);
   return allEvents;
 }

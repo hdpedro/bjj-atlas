@@ -1,9 +1,9 @@
-name: BJJ Atlas - Weekly Scrape
+name: BJJ Atlas - Daily Scrape
 
 on:
   schedule:
-    # Every Monday at 06:00 UTC
-    - cron: '0 6 * * 1'
+    # Every day at 06:00 UTC
+    - cron: '0 6 * * *'
   workflow_dispatch: {}
 
 jobs:
