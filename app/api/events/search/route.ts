@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/utils/db';
+import { expandCountryWords } from '@/utils/country';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,23 +17,30 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(params.get('limit') || '50'), 200);
     const offset = parseInt(params.get('offset') || '0');
 
+    // Match ANY word (ranked), so "campeonatos do brasil" still finds Brazilian events.
+    const words = q.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+    const tsquery = expandCountryWords(words).join(' | ');
+    if (!tsquery) {
+      return NextResponse.json({ query: q, events: [], pagination: { total: 0, limit, offset, hasMore: false } });
+    }
+
     const events = await sql`
       SELECT id, name, date_start, date_end, city, country, venue, organizer, source, source_url, relevance, description, created_at,
         ts_rank(
-          to_tsvector('english', name || ' ' || COALESCE(city, '') || ' ' || COALESCE(description, '')),
-          plainto_tsquery('english', ${q})
+          to_tsvector('english', unaccent(name || ' ' || COALESCE(city, '') || ' ' || COALESCE(country, '') || ' ' || COALESCE(description, ''))),
+          to_tsquery('english', ${tsquery})
         ) AS search_rank
       FROM events
-      WHERE to_tsvector('english', name || ' ' || COALESCE(city, '') || ' ' || COALESCE(description, ''))
-        @@ plainto_tsquery('english', ${q})
-      ORDER BY search_rank DESC, relevance DESC
+      WHERE to_tsvector('english', unaccent(name || ' ' || COALESCE(city, '') || ' ' || COALESCE(country, '') || ' ' || COALESCE(description, '')))
+        @@ to_tsquery('english', ${tsquery})
+      ORDER BY (date_start >= CURRENT_DATE) DESC, search_rank DESC, date_start ASC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
     const countResult = await sql`
       SELECT COUNT(*) as total FROM events
-      WHERE to_tsvector('english', name || ' ' || COALESCE(city, '') || ' ' || COALESCE(description, ''))
-        @@ plainto_tsquery('english', ${q})
+      WHERE to_tsvector('english', unaccent(name || ' ' || COALESCE(city, '') || ' ' || COALESCE(country, '') || ' ' || COALESCE(description, '')))
+        @@ to_tsquery('english', ${tsquery})
     `;
     const total = parseInt(countResult[0]?.total || '0');
 

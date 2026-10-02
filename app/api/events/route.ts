@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/utils/db';
+import { resolveCountry } from '@/utils/country';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,8 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
 
     const city = params.get('city');
-    const country = params.get('country');
+    const countryParam = params.get('country');
+    const country = countryParam ? resolveCountry(countryParam) : null;
     const source = params.get('source');
     const from = params.get('from');
     const to = params.get('to');
