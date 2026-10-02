@@ -5,6 +5,7 @@ import type { RawScrapedEvent } from '@/types/event';
 const LISTING_URLS = [
   'https://smoothcomp.com/en/events/upcoming',
   'https://compnet.smoothcomp.com/en/federation/30/events/upcoming',
+  'https://events.uaejjf.org/en/events/upcoming',
 ];
 
 // Smoothcomp sport groups: 1 = Brazilian Jiu-Jitsu, 3/4/7 = grappling / no-gi / ADCC
@@ -55,15 +56,22 @@ function extractEventsArray(html: string): SmoothcompListEvent[] {
   return [];
 }
 
-async function scrapeListing(url: string): Promise<SmoothcompListEvent[]> {
+// *.smoothcomp.com subdomains share one event ID space; white-label hosts (e.g. UAEJJF) have their own.
+function idNamespace(url: string): string {
+  const host = new URL(url).hostname;
+  return host.endsWith('smoothcomp.com') ? 'smoothcomp' : host;
+}
+
+async function scrapeListing(url: string): Promise<{ namespace: string; events: SmoothcompListEvent[] }> {
+  const namespace = idNamespace(url);
   try {
     const { data: html } = await axios.get<string>(url, { timeout: 25000, headers: HEADERS, responseType: 'text' });
     const events = extractEventsArray(html);
     console.log(`[Smoothcomp] ${url} → ${events.length} events`);
-    return events;
+    return { namespace, events };
   } catch (err) {
     console.error(`[Smoothcomp] Failed ${url}: ${err instanceof Error ? err.message : err}`);
-    return [];
+    return { namespace, events: [] };
   }
 }
 
@@ -71,12 +79,13 @@ export async function scrapeSmoothcomp(): Promise<RawScrapedEvent[]> {
   console.log('[Smoothcomp] Starting scrape...');
   const lists = await Promise.all(LISTING_URLS.map(scrapeListing));
 
-  const byId = new Map<number, RawScrapedEvent>();
-  for (const ev of lists.flat()) {
-    if (byId.has(ev.id) || !ev.title || !ev.startdate) continue;
+  const byId = new Map<string, RawScrapedEvent>();
+  for (const { namespace, events } of lists) for (const ev of events) {
+    const key = `${namespace}:${ev.id}`;
+    if (byId.has(key) || !ev.title || !ev.startdate) continue;
     if (!ev.categoryGroups?.some(g => GRAPPLING_GROUPS.has(String(g)))) continue;
 
-    byId.set(ev.id, {
+    byId.set(key, {
       name: ev.title.trim(),
       dateStart: ev.startdate,
       dateEnd: ev.enddate || undefined,
