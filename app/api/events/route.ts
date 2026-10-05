@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     // Neon's tagged template doesn't support dynamic WHERE easily,
     // so we use a wide query with CASE-based filtering
     const events = await sql`
-      SELECT id, name, date_start, date_end, city, country, venue, organizer, source, source_url, relevance, description, created_at
+      SELECT id, name, date_start, COALESCE(date_end, date_start) AS date_end, city, country, venue, organizer, source, source_url, relevance, description, created_at
       FROM events
       WHERE
         (${city}::text IS NULL OR LOWER(unaccent(city)) LIKE LOWER(unaccent(${'%' + (city || '') + '%'})))

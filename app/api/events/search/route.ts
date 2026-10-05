@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     const events = await sql`
-      SELECT id, name, date_start, date_end, city, country, venue, organizer, source, source_url, relevance, description, created_at,
+      SELECT id, name, date_start, COALESCE(date_end, date_start) AS date_end, city, country, venue, organizer, source, source_url, relevance, description, created_at,
         ts_rank(
           to_tsvector('english', unaccent(name || ' ' || COALESCE(city, '') || ' ' || COALESCE(country, '') || ' ' || COALESCE(description, ''))),
           to_tsquery('english', ${tsquery})

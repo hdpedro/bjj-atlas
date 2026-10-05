@@ -22,7 +22,12 @@ function stripHtml(html: string): string {
 export function normalizeEvent(raw: RawScrapedEvent): NormalizedEvent {
   const name = raw.name.trim();
   const dateStart = parseDate(raw.dateStart);
-  const dateEnd = raw.dateEnd ? parseDate(raw.dateEnd) : undefined;
+  // Evento de um dia chega sem data final (IBJJF e Smoothcomp). Gravar null
+  // derrubou a aba Campeonatos do GripFlow em 02/10/2026 — o app formatava
+  // `date_end` sem checar. Sem fim (ou com fim antes do início), termina no
+  // mesmo dia em que começa. Fim ilegível também: antes descartava o evento.
+  const parsedEnd = raw.dateEnd ? parseDate(raw.dateEnd) : '';
+  const dateEnd = /^\d{4}-\d{2}-\d{2}$/.test(parsedEnd) && parsedEnd >= dateStart ? parsedEnd : dateStart;
   const city = raw.city ? titleCase(raw.city.trim()) : undefined;
   const country = raw.country ? titleCase(raw.country.trim()) : undefined;
   const description = raw.description ? stripHtml(raw.description) : undefined;
